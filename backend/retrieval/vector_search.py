@@ -143,6 +143,51 @@ class VectorSearch:
 
         return results
 
+    def get_repository_chunks(self, repository_id: str, limit: int = 10000) -> List[Dict]:
+        """
+        Fetch all stored chunks and payloads for a specific repository.
+        """
+        if not repository_id:
+            return []
+
+        chunks = []
+        offset = None
+
+        while True:
+            records, next_offset = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="repository_id",
+                            match=models.MatchValue(value=repository_id)
+                        )
+                    ]
+                ),
+                limit=100,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False
+            )
+
+            for record in records:
+                payload = record.payload or {}
+                chunks.append({
+                    "chunk_id": payload.get("chunk_id", str(record.id)),
+                    "repository_id": payload.get("repository_id", repository_id),
+                    "file_path": payload.get("file_path", ""),
+                    "start_line": payload.get("start_line", 1),
+                    "end_line": payload.get("end_line", 1),
+                    "language": payload.get("language", ""),
+                    "content": payload.get("content", "")
+                })
+
+            if next_offset is None or len(chunks) >= limit:
+                break
+            offset = next_offset
+
+        return chunks
+
     def delete_repository(self, repository_id: str):
         """
         Delete all chunks belonging to a repository.
